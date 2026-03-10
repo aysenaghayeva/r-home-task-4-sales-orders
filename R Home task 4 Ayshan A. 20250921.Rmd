@@ -1,0 +1,328 @@
+---
+title: "R Home task 4"
+author: "Ayşən A."
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    css: styles.css
+---
+<script>
+   $(document).ready(function() {
+     $head = $('#header');
+     $head.prepend('<img src=\"https://www.aztu.edu.az/sub_site/assets/dist/img/logo-footerr.png\" style=\"float: right;width: 300px;\"/>')
+   });
+</script>
+
+
+### İlkin hazırlıq
+
+```{r ilkinhaz,echo=F,error=F,warning=F,message=F,include=T}
+library(ggplot2)
+library(data.table)
+library(readr)
+library(readxl)
+library(xlsx)
+library(lubridate)
+library(dplyr)
+library(plotly)
+library(DT)
+library(ggthemes)
+library(hrbrthemes)
+library(janitor)
+library(RMariaDB)
+library(stringr)
+library(mailR)
+
+maria=dbConnect(
+  drv = RMariaDB::MariaDB(), 
+  username = "code_ayshankha",
+  password = Sys.getenv("sql_burada"), 
+  host = "128.140.38.157", 
+  port = 3306,
+  charset='utf8mb4'
+)
+dbSendQuery(maria, "SET NAMES utf8mb4;")
+Sys.setlocale(category = "LC_ALL",locale = "az_AZ")
+db="code_train"
+dbSendQuery(maria,paste("use ",db,";",sep=""))
+spr=data.table(dbGetQuery(maria,"select * from superstore"))
+dbDisconnect(maria)
+
+###Superstor'un temizlenmesi
+
+spr1=spr[Segment=="United States"]
+spr=spr[Segment!="United States"]
+
+spr1[,21]=spr1[,20]
+spr1[,20]=spr1[,19]
+spr1[,19]=spr1[,18]
+spr1[,18]=spr1[,17]
+spr1[,17]=spr1[,16]
+spr1[,16]=spr1[,15]
+spr1[,15]=spr1[,14]
+spr1[,14]=spr1[,13]
+spr1[,13]=spr1[,12]
+spr1[,12]=spr1[,11]
+spr1[,11]=spr1[,10]
+spr1[,10]=spr1[,9]
+spr1[,9]=spr1[,8]
+
+spr1$Segment=gsub(';"','',str_extract(spr1$CustomerName,";.*"))
+
+spr1$CustomerName=gsub(";.*","",spr1$CustomerName)
+
+spr=rbind(spr,spr1)
+
+spr$Sales=as.numeric(spr$Sales)
+
+spr=spr[order(RowID)]
+rm(spr1)
+```
+
+
+
+
+
+### Tapsiriq 1
+>  Sifariş tarixinin ili və daşınma növünə görə sifariş sayını və toplam mənfəəti (minlərlə) ayrı qarafikərdə vizuallaşdırın.
+
+```{r t1,echo=T,error=F,warning=F,message=F,include=T}
+t1=spr[,.(sifaris_sayi=n_distinct(OrderID),toplam_menfeet=round(sum(Profit))),by=.(year_date=year(OrderDate),ShipMode)]
+
+gg=ggplot(t1,aes(x=factor(year_date),y=sifaris_sayi,color=ShipMode,group = ShipMode))+geom_line()+labs(x="Sifaris_ili")+theme_ft_rc()
+ggplotly(gg)
+```
+
+```{r t1.2,echo=T,error=F,warning=F,message=F,include=T}
+gg=ggplot(t1,aes(x=factor(year_date),y=toplam_menfeet,color=ShipMode,group = ShipMode))+geom_line()+labs(x="Sifaris_ili")+theme_ft_rc()
+ggplotly(gg)
+```
+
+### Tapsiriq 2
+
+> Məhsul kateqoriyasına görə Sifarişin rəsmiləşdirildiyi tarixdən (OrderDate), göndərildiyi tarixədək (shipDate) gün etibarı ilə keçən müddətin dağılımını vizuallaşdırın. (facet istifadə edilməməlidir) Şərh verin.
+
+```{r t2,echo=T,error=F,warning=F,message=F,include=T}
+
+sprx=spr
+sprx$gonderilme_tarixi = as.numeric(difftime(sprx$ShipDate, sprx$OrderDate, units = "days"))
+gg1=ggplot(sprx,aes(x=Category,y=gonderilme_tarixi))+geom_boxplot(fill="darkblue",color="darkblue")+theme_ft_rc()
+ggplotly(gg1)
+ 
+```
+
+
+Bu qrafikdə böyük problem var. Üç fərqli məhsul növü üçün bütün rəqəmlər eynidir - bu real həyatda olmaz. Mebel və kompüter eyni sürətlə göndərilmir, fərqli logistics-i var. Bu ya test məlumatıdır, ya məlumat bazasında səhv var. Data düzgün deyil və biznes qərarları üçün təhlükəlidir. İlk növbədə əsl məlumatları yoxlayın və sistemdə nə səhv getdiyini tapın. Hazırda bu qrafikə etibar etmək olmaz.
+
+### Tapsiriq 3
+> Region-a görə sifariş sayını pie chart formasında vizuallaşdırın. Şərh verin.
+
+```{r t3,echo=T,error=F,warning=F,message=F,include=T}
+tab=spr[,.(sifaris_sayi=n_distinct(OrderID)),by=Region]
+plot_ly(data = tab,labels=~Region,values=~sifaris_sayi,type = "pie") 
+```
+
+
+Qrafikdən göründüyü kimi, ən çox sifariş West regionundan (32.1%) gəlmişdir, bu da bazarda həmin regionun daha aktiv olduğunu göstərir. East regionu 27.9% ilə ikinci yerdədir və West-ə yaxın nəticə göstərir. Central regionu 23.5% ilə orta səviyyədə paya sahibdir. Ən az sifariş isə South regionundan (16.5%) daxil olub, bu da digər regionlarla müqayisədə nəzərəçarpacaq dərəcədə aşağıdır.
+
+Buradan belə nəticə çıxır ki, West və East regionları bazarın əsas hissəsini təşkil edir, Central isə orta mövqedə dayanır. South regionunda isə ya bazar həcmi kiçikdir, ya da satış və logistika ilə bağlı problemlər mövcuddur. Bu fərqlər satış strategiyasının regionlar üzrə fərqli şəkildə qurulmasının vacibliyini göstərir.
+Digər regionlarla müqayisədə South-un payının çox aşağı olması diqqət çəkir və ayrıca araşdırılmalı haldır.
+
+
+### Tapsiriq 4
+
+> Hər kateqoriya üzrə toplam gəlirə görə top 5 subkateqoriyanı saxlayın. (Kateqoriya, Sub-kateqoriya, Toplam gəlir, Rank) Şərh verin.
+
+```{r t4,echo=T,error=F,warning=F,message=F,include=T}
+tabs= spr %>%
+  group_by(Category,SubCategory) %>%
+  summarise(toplam_gelir = round(sum(Sales)))
+ 
+tabs = tabs %>% group_by(Category) %>%
+  mutate(Rank = row_number(desc(toplam_gelir))) %>% filter(Rank<=5)
+
+datatable(tabs,
+          extensions = 'Buttons',
+           options = list(paging = TRUE,
+                          searching = TRUE,
+                          fixedColumns = TRUE,
+                          autoWidth = TRUE,
+                          ordering = TRUE,
+                          dom = 'Bftp',
+                          buttons = c('copy', 'csv', 'excel','print')
+                            ))
+
+
+ 
+```
+
+Cədvələ əsasən, ən yüksək gəlir “Technology - Accessories” (385,211) və “Furniture - Chairs” (323,489) subkategoriyalarına aiddir. Orta seqmentdə “Tables” və “Binders” dayanır, ən aşağı gəlir isə “Supplies” (46,584) və “Furnishings” (96,171) üzrədir. Kateqoriyalar arasında ciddi fərq var, bəzi məhsullar bazarda dominantdır, digərləri isə zəif tələblə seçilir. Xüsusilə “Furniture” daxilində “Chairs” yüksək, “Furnishings” isə çox aşağı gəlirlə anomaliya göstərir.
+
+
+### Tapsiriq 5
+> Daşınma növü və Seqment sətirlərdə, Gəlir kateqoriyası sütunlarda olmaqla sifariş sayı və satış həcmini aqreqasiya edin. Şərh verin.
+
+```{r t5,echo=T,error=F,warning=F,message=F,include=T}
+spr=spr[, SalesCategory := case_when(
+  Sales>=0 & Sales<50  ~ "0>=50",
+  Sales>=50 & Sales<100  ~ "50>=100",
+  Sales>=100 & Sales<300  ~ "100>=300",
+  Sales>=300 & Sales<500  ~ "300>=500 " ,
+  Sales>=500 & Sales<1000  ~ "500>=1000" ,
+  Sales>=1000 & Sales<5000  ~ "1000>=5000" ,
+  Sales>=5000 & Sales<10000  ~ "5000>=10000" ,
+  Sales>=10000 ~ "10000=<...",
+  TRUE ~ NA
+)]
+
+order_count = spr[, .(OrderID_count = n_distinct(OrderID), 
+                      Quantity_sum = sum(Quantity, na.rm = TRUE)),
+                  by = .(ShipMode, Segment, SalesCategory)]
+
+
+newtab = dcast(order_count,
+               ShipMode + Segment ~ SalesCategory,
+               value.var = c("OrderID_count", "Quantity_sum"))
+
+
+datatable(newtab,
+          extensions = 'Buttons',
+           options = list(paging = TRUE,
+                          searching = TRUE,
+                          fixedColumns = TRUE,
+                          autoWidth = TRUE,
+                          ordering = TRUE,
+                          dom = 'Bftp',
+                          buttons = c('copy', 'csv', 'excel','print')
+                            ))
+
+```
+
+
+Cədvələ əsasən, ən çox sifariş və miqdar Standard Class çatdırılma üsulunda toplanır, xüsusilə Consumer seqmentində (969 sifariş, 4681 quantity). Second Class orta səviyyədədir, əsasən Consumer tərəfindən seçilir. First Class nisbətən az istifadə olunur, ən çox Consumer seqmentindədir. Same Day isə ən az paya malikdir və daha çox kiçik sifarişlərdə görünür. Ümumilikdə, Standard Class – Consumer digərlərinə nisbətən kəskin üstünlük təşkil edir və əsas outlier hesab oluna bilər.
+
+
+### Tapsiriq 6
+> Məhsul adında "table" olan sifarişlərin sayını, bəyan edilmiş gəliri və satış həcmini daşınma növü və seqmentə görə aqreqasiya edin. Nəticəni geniş formatdan uzun formata çevirin. (DN, Seg, Parametr, Dəyər)
+
+```{r t6,echo=T,error=F,warning=F,message=F,include=T}
+new=spr[tolower(ProductName) %like% "table",.(sifaris_sayi=n_distinct(OrderID),sales=round(sum(Sales,na.rm = T)),satis_hecmi=round(sum(Quantity,na.rm = T))),by=.(DN=ShipMode,Seg=Segment)]
+
+long_data = melt(new, id.vars = c("DN", "Seg"), variable.name = "Prametr", value.name = "Deyer")
+
+datatable(long_data,
+          extensions = 'Buttons',
+           options = list(paging = TRUE,
+                          searching = TRUE,
+                          fixedColumns = TRUE,
+                          autoWidth = TRUE,
+                          ordering = TRUE,
+                          dom = 'Bftp',
+                          buttons = c('copy', 'csv', 'excel','print')
+                            ))
+
+ 
+```
+
+
+
+### Tapsiriq 7
+> Gəlir, satış həcmi və mənfəətə əsasən endirimi proqnozlaşdıran reqressiya modelini qurun. Model xülasəsini şərhləndirin. Proqnozlaşdırılan dəyərlərdən ibarət pred_discount məlumat həddini yaradın.
+
+```{r t7,echo=T,error=F,warning=F,message=F,include=T}
+sps=spr[,.(Discount,Sales,Quantity,Profit)] 
+reg=lm(data = sps,Discount~Sales+Quantity+Profit)
+summary(reg)
+sps$pred_discount=round(predict(reg,sps),2)
+
+
+
+
+```
+Xülasə-Residuals lara baxsaq bu model mənə min -1.14506 qeder az da deyə bilər,max 1.22295 cox da deyə bilər lakin biz ümumi quartile lara baxsaq gorerikki bu deyiskenlik coxdur.Ve model yararsizdir.Sales  məlumat həddinin bu modeldə olmasi duzgen deyil,cunki digərləri (-) dir lakin bunun dəyəri( 3.309e-05) müsbətdir.R-squared baxsaq,Quantity və Profit  0.06717% hallarda duzgun praqnozlasdirila bilər.Qalan bütün hallarda ise sehvdir ve bu da az ehtimal olfugundan aciqca görə bilirki bu model səhvdir.
+
+### Tapsiriq 8
+> discount_cat və pred_discount_cat məlumat həddlərini yaradın. discount_cat sətirlərdə, pred_discount_cat sütunlarda olmaqla sifarişlərin sayını aqreqasiya edin. Şərh verin.
+
+```{r t8,echo=T,error=F,warning=F,message=F,include=T}
+spss=spr[,.(Discount,Sales,Quantity,Profit,OrderID)] 
+reg=lm(data = spss,Discount~Sales+Quantity+Profit)
+spss$pred_discount=round(predict(reg,spss),2)
+
+spss=spss[, discount_cat := case_when(
+  Discount>=0 & Discount<0.05  ~ "0>=0.05",
+  Discount>=0.05 & Discount<0.1  ~ "0.05>=0.1",
+  Discount>=0.1 & Discount<0.15  ~ "0.1>=0.15",
+  Discount>=0.15 & Discount<0.2  ~ "0.15>=0.2" ,
+  Discount>=0.2 ~ "0.2=<...",
+  TRUE ~ NA
+)]
+ 
+spss=spss[, pred_discount_cat := case_when(
+  pred_discount<=0  ~ "...<0",
+  pred_discount>=0 & pred_discount<0.05  ~ "0>=0.05",
+  pred_discount>=0.05 & pred_discount<0.1  ~ "0.05>=0.1",
+  pred_discount>=0.1 & pred_discount<0.15  ~ "0.1>=0.15",
+  pred_discount>=0.15 & pred_discount<0.5  ~ "0.15>=0.5" ,
+  pred_discount>=0.5 & pred_discount<1.5  ~ "0.5>=1.5" ,
+  pred_discount>=1.5 ~ "1.5=<...",
+  TRUE ~ NA
+)]
+
+dcasttab=dcast(spss, discount_cat ~ pred_discount_cat, value.var = "OrderID", fun.aggregate= n_distinct)
+
+datatable(dcasttab,
+          extensions = 'Buttons',
+           options = list(paging = TRUE,
+                          searching = TRUE,
+                          fixedColumns = TRUE,
+                          autoWidth = TRUE,
+                          ordering = TRUE,
+                          dom = 'Bftp',
+                          buttons = c('copy', 'csv', 'excel','print')
+                            ))
+
+```
+
+
+Ən çox uyğunluq 0–0.05 və 0.2–0.5 intervalında qeydə alınıb ki, bu da modelin əsas kütləvi endirimləri düzgün proqnozlaşdırdığını göstərir. Kiçik fərqləri ayırmaqda çətinlik var, məsələn, 0.15–0.2 kateqoriyası tam olaraq 0.15–0.5 aralığına proqnoz edilib. Bu, modelin oxşar endirim intervallarını qarışdırma meyli olduğunu göstərir. Böyük endirimlərdə (≥0.5) müşahidə sayı çox azdır, bu da datasetdə balanssızlıq probleminin olduğunu sübut edir. Anomaliya odur ki, bəzi hüceyrələr tamamilə boşdur, yəni həmin kateqoriyalarda ümumiyyətlə uyğunluq olmayıb.
+
+
+
+### Tapsiriq 9
+> Gəlir və mənfəətin dağılımını bir qrafikdə təsvir edin (facet istifadə edilməməlidir). Şərh verin.
+
+```{r t9,echo=T,error=F,warning=F,message=F,include=T}
+ggp=ggplot(spr,aes(x=Sales,y=Profit))+geom_point(color="red")+theme_ft_rc()
+ggplotly(ggp)
+
+```
+
+
+Nöqtələrin çoxu aşağı satış həcmlərində toplanıb, yəni şirkətin əsas əməliyyatları kiçik satışlardan ibarətdir. Mənfəət həm müsbət, həm də mənfi ola bilər – bu da göstərir ki, bəzi satışlar zərərə səbəb olub. Yüksək satış məbləğləri ilə bağlı hallarda isə həm çox böyük mənfəət, həm də ciddi zərər müşahidə olunur ki, bu anomaliya kimi diqqət çəkir və ehtimal ki, endirim siyasəti və ya məhsul kateqoriyası ilə bağlıdır.
+
+### Tapsiriq 10
+> Cari tapşırıq əsasında formalaşan xammal məlumatı (.rds) və nəticə hesabatını (.html) Təlimçi və Təlim köməkçisinə göndərin. E-mail-ın məzmunu (body) cari Tapşırığa dair yekun təhlil xülasəsindən ibarət olmalıdır. (Minimum 4 cümlə)
+E-mail mövzu nümunəsi: R Home Task 4, Novruz H {cari tarix}
+
+```{r t10,echo=T,error=F,warning=F,message=F,include=T}
+saveRDS(spr,"~/R/Export&Import fayl/supestore.rds")
+
+readRenviron("~/.Renviron")
+
+send.mail(from = "ayshankha@code.edu.az",
+          to = "novruz.hasanov@code.edu.az",
+          cc="lamiyams@code.edu.az",
+          subject = paste("R Home Task 4, Ayshan A.",Sys.Date()),
+          body = "Superstore məlumatları göstərir ki, satışlar əsasən kiçik həcmli olsa da, həm mənfəət, həm də zərər halları geniş yayılıb. Orta endirim səviyyələri düzgün idarə olunmadıqda satış artmasına baxmayaraq mənfəət itkisinə səbəb olur. Yüksək satış göstəricilərində həm çox böyük qazanc, həm də ciddi zərər müşahidə olunması risklərin yüksək olduğunu göstərir. Ümumilikdə, mənfəətin stabilliyi üçün endirim siyasəti və məhsul kateqoriyalarının daha dəqiq idarə olunmasına ehtiyac var.",
+          smtp=list(host.name="smtp.gmail.com",
+                    port=587,
+                    user.name="ayshankha@code.edu.az",
+                    passwd=Sys.getenv("mail_chek"), 
+                    tls=T),html = T,
+          attach.files = c("~/R/Export&Import fayl/supestore.rds"), 
+          authenticate = T, send = T,encoding = "utf-8")
+```
+
